@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Incident Management — Claims Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/msal.js/2.38.3/msal-browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --blue:#185FA5;--blue-light:#E6F1FB;--blue-mid:#378ADD;--blue-dark:#0C447C;
+    --teal:#0F6E56;--teal-light:#E1F5EE;--teal-mid:#1D9E75;
+    --amber:#854F0B;--amber-light:#FAEEDA;--amber-mid:#EF9F27;
+    --red:#A32D2D;--red-light:#FCEBEB;--red-mid:#E24B4A;
+    --green:#3B6D11;--green-light:#EAF3DE;--green-mid:#639922;
+    --gray:#5F5E5A;--gray-light:#F1EFE8;--gray-mid:#888780;
+    --bg:#fff;--bg2:#f8f9fa;--bg3:#f1f3f5;
+    --text:#1a1a1a;--text2:#5c5c5c;--text3:#999;
+    --border:#e0e0e0;--border2:#d0d0d0;
+    --radius:10px;--radius-sm:6px;
+    --shadow:0 1px 3px rgba(0,0,0,.08);
+    --shadow-md:0 4px 16px rgba(0,0,0,.1);
+    --font:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg2);color:var(--text);font-size:14px;line-height:1.5}
+  button{font-family:var(--font);cursor:pointer}
+
+  /* ── LAYOUT ── */
+  #app{display:flex;height:100vh;overflow:hidden}
+  #sidebar{width:220px;min-width:220px;background:var(--blue-dark);color:#fff;display:flex;flex-direction:column;overflow:hidden;transition:width .2s}
+  #sidebar.collapsed{width:52px}
+  #main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  #topbar{background:var(--bg);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+  #content{flex:1;overflow-y:auto;padding:24px}
+
+  /* ── SIDEBAR ── */
+  .sidebar-brand{padding:16px 14px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.12)}
+  .sidebar-brand svg{flex-shrink:0}
+  .brand-text{font-size:13px;font-weight:600;white-space:nowrap;opacity:1;transition:opacity .15s}
+  .sidebar.collapsed .brand-text{opacity:0;width:0;overflow:hidden}
+  nav{flex:1;padding:12px 0;overflow-y:auto}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;color:rgba(255,255,255,.75);font-size:13px;border-radius:0;transition:background .12s,color .12s;white-space:nowrap;border:none;background:none;width:100%;text-align:left}
+  .nav-item:hover{background:rgba(255,255,255,.1);color:#fff}
+  .nav-item.active{background:rgba(255,255,255,.18);color:#fff;font-weight:500}
+  .nav-item svg{flex-shrink:0}
+  .nav-label{opacity:1;transition:opacity .15s}
+  .sidebar-footer{padding:12px 14px;border-top:1px solid rgba(255,255,255,.12);font-size:11px;color:rgba(255,255,255,.45);white-space:nowrap;overflow:hidden}
+
+  /* ── TOPBAR ── */
+  .topbar-title{font-size:15px;font-weight:600;color:var(--text)}
+  .topbar-right{display:flex;align-items:center;gap:12px}
+  .user-chip{display:flex;align-items:center;gap:8px;padding:5px 12px 5px 5px;border:1px solid var(--border);border-radius:20px;background:var(--bg);font-size:13px;cursor:pointer;color:var(--text2)}
+  .user-chip:hover{border-color:var(--blue-mid)}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--blue-light);color:var(--blue-dark);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;transition:all .12s;white-space:nowrap}
+  .btn:hover{border-color:var(--blue-mid);color:var(--blue)}
+  .btn-primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .btn-primary:hover{background:var(--blue-dark);border-color:var(--blue-dark);color:#fff}
+  .btn-success{background:var(--teal-mid);border-color:var(--teal-mid);color:#fff}
+  .btn-success:hover{background:var(--teal);border-color:var(--teal);color:#fff}
+  .btn-danger{background:var(--red-mid);border-color:var(--red-mid);color:#fff}
+  .btn-danger:hover{background:var(--red);border-color:var(--red);color:#fff}
+  .btn-sm{padding:5px 10px;font-size:12px}
+  .btn svg{width:14px;height:14px}
+
+  /* ── SCREENS ── */
+  .screen{display:none}
+  .screen.active{display:block}
+
+  /* ── CONFIG SCREEN ── */
+  .config-card{max-width:600px;margin:0 auto;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:32px}
+  .config-card h2{font-size:18px;font-weight:600;margin-bottom:6px}
+  .config-card p{color:var(--text2);font-size:13px;margin-bottom:24px}
+  .config-section{background:var(--blue-light);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:20px;font-size:12px;color:var(--blue-dark)}
+  .config-section strong{display:block;margin-bottom:4px;font-size:13px}
+
+  /* ── FORM ELEMENTS ── */
+  .field{margin-bottom:16px}
+  .field label{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
+  .field input,.field select,.field textarea{width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font);background:var(--bg);color:var(--text);outline:none;transition:border .12s}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue-mid);box-shadow:0 0 0 3px rgba(55,138,221,.12)}
+  .field textarea{resize:vertical;min-height:80px}
+  .field input[readonly]{background:var(--gray-light);color:var(--gray);cursor:default}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .field-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+
+  /* ── DASHBOARD ── */
+  .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+  .stat-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+  .stat-card .label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:6px}
+  .stat-card .value{font-size:26px;font-weight:600;line-height:1}
+  .stat-card .sub{font-size:12px;color:var(--text3);margin-top:4px}
+  .stat-card.blue .value{color:var(--blue)}
+  .stat-card.teal .value{color:var(--teal-mid)}
+  .stat-card.amber .value{color:var(--amber-mid)}
+  .stat-card.red .value{color:var(--red-mid)}
+  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px}
+  .chart-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+  .chart-card h3{font-size:13px;font-weight:600;margin-bottom:14px;color:var(--text)}
+  .chart-wrap{position:relative;height:200px}
+
+  /* ── TABLE ── */
+  .table-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .table-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .table-header h3{font-size:13px;font-weight:600}
+  .table-toolbar{display:flex;gap:8px;align-items:center}
+  .search-wrap{position:relative}
+  .search-wrap input{padding:7px 10px 7px 32px;border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:13px;width:220px;outline:none}
+  .search-wrap input:focus{border-color:var(--blue-mid);box-shadow:0 0 0 3px rgba(55,138,221,.12)}
+  .search-wrap svg{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead tr{background:var(--bg3)}
+  th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top}
+  tbody tr:hover{background:var(--bg2)}
+  tbody tr:last-child td{border-bottom:none}
+  .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;white-space:nowrap}
+  .badge-open{background:var(--teal-light);color:var(--teal)}
+  .badge-closed{background:var(--gray-light);color:var(--gray)}
+  .badge-high{background:var(--red-light);color:var(--red)}
+  .badge-med{background:var(--amber-light);color:var(--amber)}
+  .badge-low{background:var(--green-light);color:var(--green)}
+  .inc-no{font-family:monospace;font-size:12px;color:var(--blue);font-weight:600}
+  .actions-col{display:flex;gap:6px;align-items:center}
+  .icon-btn{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2);transition:all .12s}
+  .icon-btn:hover{border-color:var(--blue-mid);color:var(--blue);background:var(--blue-light)}
+  .icon-btn.red:hover{border-color:var(--red-mid);color:var(--red);background:var(--red-light)}
+
+  /* ── MODAL ── */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto}
+  .modal-backdrop.hidden{display:none}
+  .modal{background:var(--bg);border-radius:var(--radius);width:100%;max-width:820px;box-shadow:var(--shadow-md)}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
+  .modal-head h2{font-size:16px;font-weight:600}
+  .modal-body{padding:22px}
+  .modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid var(--border);background:var(--bg3);border-radius:0 0 var(--radius) var(--radius)}
+
+  /* ── SECTION HEADERS ── */
+  .form-section{margin:20px 0 14px;padding-bottom:6px;border-bottom:2px solid var(--blue-light)}
+  .form-section h3{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--blue)}
+
+  /* ── INVOICES GRID ── */
+  .invoice-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+
+  /* ── TABS ── */
+  .tabs{display:flex;gap:2px;border-bottom:2px solid var(--border);margin-bottom:20px}
+  .tab{padding:8px 16px;font-size:13px;cursor:pointer;color:var(--text2);border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .12s}
+  .tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:500}
+  .tab:hover{color:var(--blue)}
+  .tab-panel{display:none}
+  .tab-panel.active{display:block}
+
+  /* ── TOAST ── */
+  #toast-container{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px}
+  .toast{background:var(--text);color:#fff;padding:12px 18px;border-radius:var(--radius-sm);font-size:13px;box-shadow:var(--shadow-md);display:flex;align-items:center;gap:10px;animation:slideIn .2s ease}
+  .toast.success{background:#1a6f3c}
+  .toast.error{background:var(--red)}
+  .toast.info{background:var(--blue)}
+  @keyframes slideIn{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+  /* ── LOADING ── */
+  .spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--blue-mid);border-radius:50%;animation:spin .6s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-overlay{display:flex;align-items:center;justify-content:center;padding:60px;flex-direction:column;gap:14px;color:var(--text2)}
+
+  /* ── EMPTY STATE ── */
+  .empty-state{text-align:center;padding:60px 20px;color:var(--text3)}
+  .empty-state svg{margin-bottom:14px;opacity:.3}
+  .empty-state p{font-size:14px;margin-bottom:4px;color:var(--text2)}
+  .empty-state small{font-size:12px}
+
+  /* ── AUTH SCREEN ── */
+  #auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0c447c 0%,#185FA5 60%,#378ADD 100%)}
+  .auth-card{background:#fff;border-radius:14px;padding:40px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);text-align:center}
+  .auth-card .logo{width:56px;height:56px;background:var(--blue-light);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+  .auth-card h1{font-size:22px;font-weight:700;color:var(--text);margin-bottom:8px}
+  .auth-card p{font-size:14px;color:var(--text2);margin-bottom:28px;line-height:1.6}
+  .auth-divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--text3);font-size:12px}
+  .auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+  .demo-btn{width:100%;padding:11px;border:1px dashed var(--border2);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text2);cursor:pointer;font-size:13px;transition:all .12s}
+  .demo-btn:hover{border-color:var(--blue-mid);color:var(--blue);background:var(--blue-light)}
+
+  /* ── CONFIG ── */
+  .config-wrap{max-width:700px;margin:0 auto}
+  .info-box{background:var(--blue-light);border-left:3px solid var(--blue-mid);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--blue-dark)}
+  .info-box strong{display:block;margin-bottom:3px}
+  .step-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;font-size:11px;font-weight:700;margin-right:8px;flex-shrink:0}
+
+  /* ── AUDIT LOG ── */
+  .audit-list{list-style:none}
+  .audit-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .audit-item:last-child{border-bottom:none}
+  .audit-dot{width:8px;height:8px;border-radius:50%;background:var(--blue-mid);margin-top:5px;flex-shrink:0}
+  .audit-text{font-size:13px;color:var(--text)}
+  .audit-time{font-size:11px;color:var(--text3);margin-top:2px}
+
+  /* ── PAGINATION ── */
+  .pagination{display:flex;align-items:center;gap:6px;padding:12px 18px;border-top:1px solid var(--border);justify-content:flex-end}
+  .page-info{font-size:12px;color:var(--text3);margin-right:8px}
+  .page-btn{min-width:30px;height:30px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);cursor:pointer;font-size:12px;color:var(--text);display:inline-flex;align-items:center;justify-content:center;transition:all .12s}
+  .page-btn:hover:not(:disabled){border-color:var(--blue-mid);color:var(--blue)}
+  .page-btn.current{background:var(--blue);border-color:var(--blue);color:#fff}
+  .page-btn:disabled{opacity:.4;cursor:default}
+  @media(max-width:900px){.stat-grid{grid-template-columns:1fr 1fr}.chart-grid{grid-template-columns:1fr}.invoice-grid{grid-template-columns:repeat(3,1fr)}.field-row-3{grid-template-columns:1fr 1fr}}
+  @media(max-width:600px){.stat-grid{grid-template-columns:1fr}.field-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#185FA5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+    </div>
+    <h1>Claims Incident Tracker</h1>
+    <p>Powered by Microsoft 365 &amp; SharePoint Lists. Sign in with your Microsoft account or use demo mode to explore.</p>
+    <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;justify-content:center" onclick="signInMSAL()">
+      <svg width="18" height="18" viewBox="0 0 23 23" fill="none"><rect x="1" y="1" width="10" height="10" fill="#F25022"/><rect x="12" y="1" width="10" height="10" fill="#7FBA00"/><rect x="1" y="12" width="10" height="10" fill="#00A4EF"/><rect x="12" y="12" width="10" height="10" fill="#FFB900"/></svg>
+      Sign in with Microsoft
+    </button>
+    <div class="auth-divider">or</div>
+    <button class="demo-btn" onclick="enterDemoMode()">
+      Continue in Demo Mode (no Microsoft account needed)
+    </button>
+    <p style="font-size:11px;color:#aaa;margin-top:20px">Demo mode uses local mock data. No data is sent anywhere.</p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none">
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" flex-shrink="0">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+      <span class="brand-text">Claims Tracker</span>
+    </div>
+    <nav>
+      <button class="nav-item active" onclick="showScreen('dashboard')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="nav-label">Dashboard</span>
+      </button>
+      <button class="nav-item" onclick="showScreen('incidents')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span class="nav-label">All Incidents</span>
+      </button>
+      <button class="nav-item" onclick="openNewIncident()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span class="nav-label">New Incident</span>
+      </button>
+      <button class="nav-item" onclick="showScreen('config')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41M21 12h-2M5 12H3M12 21v-2M12 5V3"/></svg>
+        <span class="nav-label">Configuration</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer" id="sidebar-footer">HTML → Graph API → SharePoint</div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+    <div id="topbar">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button onclick="toggleSidebar()" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--text2);display:flex;align-items:center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <span class="topbar-title" id="topbar-title">Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <span id="mode-badge" style="font-size:11px;padding:3px 10px;border-radius:10px;background:var(--amber-light);color:var(--amber)">Demo Mode</span>
+        <div class="user-chip" onclick="signOut()">
+          <div class="avatar" id="user-avatar">DM</div>
+          <span id="user-name">Demo User</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="content">
+      <!-- Dashboard -->
+      <div id="screen-dashboard" class="screen active">
+        <div class="stat-grid" id="stat-grid"></div>
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h3>Claims by Severity</h3>
+            <div class="chart-wrap"><canvas id="chart-severity"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>Open vs Closed Claims</h3>
+            <div class="chart-wrap"><canvas id="chart-status"></canvas></div>
+          </div>
+        </div>
+        <div class="chart-card" style="margin-bottom:14px">
+          <h3>Financial Summary — Reserves &amp; Settlements</h3>
+          <div class="chart-wrap" style="height:220px"><canvas id="chart-financial"></canvas></div>
+        </div>
+        <div class="table-card">
+          <div class="table-header">
+            <h3>Due Soon / Overdue</h3>
+          </div>
+          <div id="due-table-body"></div>
+        </div>
+      </div>
+
+      <!-- Incidents List -->
+      <div id="screen-incidents" class="screen">
+        <div class="table-card">
+          <div class="table-header">
+            <h3>All Incidents</h3>
+            <div class="table-toolbar">
+              <div class="search-wrap">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="search-input" placeholder="Search incidents…" oninput="filterIncidents()">
+              </div>
+              <select id="filter-status" onchange="filterIncidents()" style="padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:13px;background:var(--bg);color:var(--text)">
+                <option value="">All Status</option>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+              </select>
+              <button class="btn btn-primary btn-sm" onclick="openNewIncident()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New Incident
+              </button>
+              <button class="btn btn-sm" onclick="exportToCSV()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export CSV
+              </button>
+              <button class="btn btn-sm" onclick="loadIncidents()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Incident No</th><th>Name</th><th>Site</th><th>Division</th>
+                  <th>Incident Date</th><th>Severity</th><th>Status</th>
+                  <th>Reserves</th><th>Est. Date</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="incidents-tbody"></tbody>
+            </table>
+          </div>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </div>
+
+      <!-- Config -->
+      <div id="screen-config" class="screen">
+        <div class="config-wrap">
+          <div style="margin-bottom:20px">
+            <h2 style="font-size:18px;font-weight:600;margin-bottom:4px">Configuration</h2>
+            <p style="color:var(--text2);font-size:13px">Connect this app to your Microsoft SharePoint List via Microsoft Graph API.</p>
+          </div>
+
+          <div class="table-card" style="margin-bottom:20px">
+            <div class="table-header"><h3>Architecture</h3></div>
+            <div style="padding:18px">
+              <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;gap:8px">
+                <div style="background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:var(--radius-sm);padding:10px 16px;font-size:13px;font-weight:500;color:var(--blue-dark);text-align:center">
+                  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;opacity:.7">Layer 1</div>
+                  HTML App<br><span style="font-size:11px;font-weight:400;opacity:.8">This file</span>
+                </div>
+                <svg width="28" height="18" viewBox="0 0 28 18" style="color:var(--blue-mid)"><path d="M4 9h20M18 4l6 5-6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+                <div style="background:var(--teal-light);border:1px solid var(--teal-mid);border-radius:var(--radius-sm);padding:10px 16px;font-size:13px;font-weight:500;color:var(--teal);text-align:center">
+                  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;opacity:.7">Layer 2</div>
+                  Microsoft Graph API<br><span style="font-size:11px;font-weight:400;opacity:.8">graph.microsoft.com/v1.0</span>
+                </div>
+                <svg width="28" height="18" viewBox="0 0 28 18" style="color:var(--teal-mid)"><path d="M4 9h20M18 4l6 5-6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+                <div style="background:var(--amber-light);border:1px solid var(--amber-mid);border-radius:var(--radius-sm);padding:10px 16px;font-size:13px;font-weight:500;color:var(--amber);text-align:center">
+                  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;opacity:.7">Layer 3</div>
+                  SharePoint List<br><span style="font-size:11px;font-weight:400;opacity:.8">Microsoft Lists</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-card" style="margin-bottom:20px">
+            <div class="table-header"><h3>Azure AD App Registration (One-time setup)</h3></div>
+            <div style="padding:18px">
+              <div class="info-box"><strong>Why is this needed?</strong>Microsoft Graph API requires an Azure AD App Registration to authenticate users and obtain permission to read/write SharePoint data.</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px"><span class="step-num">1</span><span>Go to <strong>portal.azure.com</strong> → Azure Active Directory → App registrations → New registration</span></div>
+                <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px"><span class="step-num">2</span><span>Name it <strong>Claims Tracker App</strong>, select Accounts in this org only, Redirect URI: Single-page application → <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">http://localhost/</code> or your hosted URL</span></div>
+                <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px"><span class="step-num">3</span><span>After creating, copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong></span></div>
+                <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px"><span class="step-num">4</span><span>Go to API Permissions → Add permission → Microsoft Graph → Delegated → add: <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">Sites.ReadWrite.All</code>, <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">User.Read</code></span></div>
+                <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px"><span class="step-num">5</span><span>Click <strong>Grant admin consent</strong> for your organisation</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-card" style="margin-bottom:20px">
+            <div class="table-header"><h3>App Settings</h3></div>
+            <div style="padding:18px">
+              <div class="field-row">
+                <div class="field">
+                  <label>Client ID (Application ID)</label>
+                  <input type="text" id="cfg-clientId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="">
+                </div>
+                <div class="field">
+                  <label>Tenant ID (Directory ID)</label>
+                  <input type="text" id="cfg-tenantId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="">
+                </div>
+              </div>
+              <div class="field-row">
+                <div class="field">
+                  <label>SharePoint Site URL</label>
+                  <input type="text" id="cfg-siteUrl" placeholder="https://yourtenant.sharepoint.com/sites/YourSite" value="">
+                </div>
+                <div class="field">
+                  <label>List Name</label>
+                  <input type="text" id="cfg-listName" placeholder="Claims Tracker" value="Claims Tracker">
+                </div>
+              </div>
+              <div class="field">
+                <label>Notification Email (for due date reminders)</label>
+                <input type="email" id="cfg-notifyEmail" placeholder="claims-team@yourorg.com" value="">
+              </div>
+              <div style="display:flex;gap:10px;margin-top:8px">
+                <button class="btn btn-primary" onclick="saveConfig()">Save Configuration</button>
+                <button class="btn" onclick="testConnection()">Test Connection</button>
+              </div>
+              <div id="conn-result" style="margin-top:12px;font-size:13px"></div>
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="table-header"><h3>Graph API Endpoints Used</h3></div>
+            <div style="padding:18px;display:flex;flex-direction:column;gap:10px">
+              <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 14px;font-family:monospace;font-size:12px;color:var(--blue-dark)">
+                <span style="color:var(--green)">GET</span> /sites/{siteId}/lists/{listId}/items?expand=fields<br>
+                <span style="color:var(--text3);font-size:11px">→ Fetch all incident records</span>
+              </div>
+              <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 14px;font-family:monospace;font-size:12px;color:var(--blue-dark)">
+                <span style="color:var(--blue)">POST</span> /sites/{siteId}/lists/{listId}/items<br>
+                <span style="color:var(--text3);font-size:11px">→ Create new incident</span>
+              </div>
+              <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 14px;font-family:monospace;font-size:12px;color:var(--blue-dark)">
+                <span style="color:var(--amber)">PATCH</span> /sites/{siteId}/lists/{listId}/items/{itemId}/fields<br>
+                <span style="color:var(--text3);font-size:11px">→ Update existing incident</span>
+              </div>
+              <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 14px;font-family:monospace;font-size:12px;color:var(--blue-dark)">
+                <span style="color:var(--red)">DELETE</span> /sites/{siteId}/lists/{listId}/items/{itemId}<br>
+                <span style="color:var(--text3);font-size:11px">→ Delete incident</span>
+              </div>
+              <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 14px;font-family:monospace;font-size:12px;color:var(--blue-dark)">
+                <span style="color:var(--green)">GET</span> /sites/{siteId}/lists/{listId}/items?$filter=fields/Estimated_Date eq '{today}'<br>
+                <span style="color:var(--text3);font-size:11px">→ Due date check for email notifications</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- INCIDENT MODAL -->
+<div class="modal-backdrop hidden" id="incident-modal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modal-title">New Incident</h2>
+      <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:var(--text2);padding:4px;display:flex;align-items:center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('tab-basic',this)">Basic Info</button>
+        <button class="tab" onclick="switchTab('tab-financial',this)">Financial</button>
+        <button class="tab" onclick="switchTab('tab-invoices',this)">Invoices</button>
+        <button class="tab" onclick="switchTab('tab-notes',this)">Notes &amp; Learning</button>
+        <button class="tab" onclick="switchTab('tab-audit',this)">Audit Log</button>
+      </div>
+
+      <!-- Tab: Basic -->
+      <div class="tab-panel active" id="tab-basic">
+        <div class="field-row">
+          <div class="field">
+            <label>Incident No (Auto-generated)</label>
+            <input type="text" id="f-incidentNo" readonly>
+          </div>
+          <div class="field">
+            <label>Record Number</label>
+            <input type="text" id="f-recordNo" placeholder="Internal reference">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Claimant Name *</label>
+            <input type="text" id="f-name" placeholder="Full name">
+          </div>
+          <div class="field">
+            <label>Email *</label>
+            <input type="email" id="f-email" placeholder="notification@email.com">
+          </div>
+        </div>
+        <div class="field-row-3">
+          <div class="field">
+            <label>Site *</label>
+            <input type="text" id="f-site" placeholder="e.g. Rochdale Ophthalmology">
+          </div>
+          <div class="field">
+            <label>Division</label>
+            <select id="f-division">
+              <option>SC</option><option>HC</option><option>PH</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Cost Code</label>
+            <input type="text" id="f-costCode" placeholder="e.g. ROCOP">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Entity</label>
+            <input type="text" id="f-entity" placeholder="Legal entity name">
+          </div>
+          <div class="field">
+            <label>Claim Code</label>
+            <input type="text" id="f-claimCode" placeholder="e.g. DIOC, FTR, NERV">
+          </div>
+        </div>
+        <div class="field-row-3">
+          <div class="field">
+            <label>Severity</label>
+            <select id="f-severity">
+              <option>1/2</option><option>2/3</option><option>3/4</option>
+              <option>4/5</option><option>5/6</option><option>6/7</option><option>7/8</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Indemnity Type</label>
+            <select id="f-indemnityType">
+              <option>Zurich</option><option>CNST</option><option>NHSLA</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Panel Solicitor</label>
+            <input type="text" id="f-solicitor" placeholder="e.g. Kennedys">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Death?</label>
+            <select id="f-death"><option value="No">No</option><option value="Yes">Yes</option></select>
+          </div>
+          <div class="field">
+            <label>Open Claim?</label>
+            <select id="f-openClaim"><option value="Yes">Yes</option><option value="No">No</option></select>
+          </div>
+        </div>
+        <div class="form-section"><h3>Key Dates</h3></div>
+        <div class="field-row">
+          <div class="field">
+            <label>Notification Date</label>
+            <input type="date" id="f-notifDate">
+          </div>
+          <div class="field">
+            <label>Incident Date</label>
+            <input type="date" id="f-incidentDate">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Claim Opened Date</label>
+            <input type="date" id="f-claimOpenDate">
+          </div>
+          <div class="field">
+            <label>Claim Closed Date</label>
+            <input type="date" id="f-claimCloseDate">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Re-Opened Date</label>
+            <input type="date" id="f-reopenDate">
+          </div>
+          <div class="field">
+            <label>Estimated Resolution Date *</label>
+            <input type="date" id="f-estimatedDate">
+          </div>
+        </div>
+        <div class="field">
+          <label>Reference Number</label>
+          <input type="text" id="f-refNumber" placeholder="e.g. Kennedys ref 1233367">
+        </div>
+      </div>
+
+      <!-- Tab: Financial -->
+      <div class="tab-panel" id="tab-financial">
+        <div class="form-section"><h3>Reserve &amp; Excess</h3></div>
+        <div class="field-row">
+          <div class="field"><label>Reserves (£)</label><input type="number" id="f-reserves" placeholder="0.00" step="0.01"></div>
+          <div class="field"><label>Accrual Remaining (£)</label><input type="number" id="f-accrual" placeholder="0.00" step="0.01"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>PPG Capped Reserve (£)</label><input type="number" id="f-ppgReserve" placeholder="0.00" step="0.01"></div>
+          <div class="field"><label>Settlement Paid (£)</label><input type="number" id="f-settlement" placeholder="0.00" step="0.01"></div>
+        </div>
+        <div class="field-row-3">
+          <div class="field"><label>Excess (£)</label><input type="number" id="f-excess" placeholder="0.00" step="0.01"></div>
+          <div class="field"><label>Excess Eroded (£)</label><input type="number" id="f-excessEroded" placeholder="0.00" step="0.01"></div>
+          <div class="field"><label>Excess Remaining (£)</label><input type="number" id="f-excessRemaining" placeholder="0.00" readonly></div>
+        </div>
+        <div class="info-box" style="margin-top:14px">Excess Remaining = Excess − Excess Eroded (auto-calculated)</div>
+      </div>
+
+      <!-- Tab: Invoices -->
+      <div class="tab-panel" id="tab-invoices">
+        <div class="form-section"><h3>Invoice Amounts (£) — up to 18 invoices</h3></div>
+        <div class="invoice-grid" id="invoice-fields"></div>
+        <div style="margin-top:14px;padding:12px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px">
+          Total Invoiced: <strong id="invoice-total" style="color:var(--blue)">£0.00</strong>
+        </div>
+      </div>
+
+      <!-- Tab: Notes -->
+      <div class="tab-panel" id="tab-notes">
+        <div class="field">
+          <label>Comments / Status</label>
+          <textarea id="f-comments" rows="5" placeholder="Full case notes, current status, liability position…"></textarea>
+        </div>
+        <div class="field">
+          <label>Consultant &amp; Clinician Names / Subcontractors</label>
+          <textarea id="f-consultants" rows="3" placeholder="e.g. Mr ABC – Consultant Ophthalmologist; Hexarad Radiology"></textarea>
+        </div>
+        <div class="field">
+          <label>Learning / Recommendations</label>
+          <textarea id="f-learning" rows="4" placeholder="Root cause analysis findings, training recommendations, governance actions…"></textarea>
+        </div>
+      </div>
+
+      <!-- Tab: Audit -->
+      <div class="tab-panel" id="tab-audit">
+        <div style="margin-bottom:14px;font-size:13px;color:var(--text2)">All changes are stamped with the user account and timestamp via SharePoint versioning.</div>
+        <ul class="audit-list" id="audit-list">
+          <li class="audit-item">
+            <div class="audit-dot"></div>
+            <div>
+              <div class="audit-text">Record created — save this incident to begin audit trail</div>
+              <div class="audit-time">Awaiting first save</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="submit-btn" onclick="submitIncident()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Save Incident
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast-container"></div>
+
+<script>
+/* ──────────────── STATE ──────────────── */
+let CONFIG = {
+  clientId: localStorage.getItem('cfg_clientId') || '',
+  tenantId: localStorage.getItem('cfg_tenantId') || '',
+  siteUrl: localStorage.getItem('cfg_siteUrl') || '',
+  listName: localStorage.getItem('cfg_listName') || 'Claims Tracker',
+  notifyEmail: localStorage.getItem('cfg_notifyEmail') || '',
+};
+let msalInstance = null;
+let accessToken = null;
+let siteId = null;
+let listId = null;
+let isDemoMode = false;
+let currentUser = {name:'Demo User', initials:'DM'};
+let allIncidents = [];
+let filteredIncidents = [];
+let currentPage = 1;
+const PAGE_SIZE = 15;
+let editingItemId = null;
+let charts = {};
+
+/* ──────────────── DEMO DATA ──────────────── */
+const DEMO_DATA = (() => {
+  const sites = ['Rochdale Ophthalmology','Bucks MSK','Devizes Surgical','Bristol Ortho','Leeds Dermatology','Manchester ENT','Birmingham Cardio'];
+  const solicitors = ['Kennedys','DAC Beachcroft','Browne Jacobson','Hill Dickinson'];
+  const severities = ['1/2','2/3','3/4','4/5','5/6','6/7','7/8'];
+  const codes = ['DIOC,FTR','NERV,BLIN','DNT,MEDM','FTR,MRI,XRAY','RCK,MEDM'];
+  const entities = ['Practice Plus Group Hospitals Limited','Practice Plus Group Health Services Limited'];
+  const today = new Date();
+  const days = n => { const d = new Date(today); d.setDate(d.getDate()+n); return d.toISOString().split('T')[0]; };
+  const items = [];
+  const counts = {};
+  for (let i=0;i<42;i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - Math.floor(Math.random()*400));
+    const dateStr = d.toISOString().split('T')[0];
+    counts[dateStr] = (counts[dateStr]||0)+1;
+    const incNo = `INC-${dateStr}-${String(counts[dateStr]).padStart(5,'0')}`;
+    const reserves = Math.round(Math.random()*400000+50000);
+    const excess = Math.round(Math.random()*25000+5000);
+    const eroded = Math.round(excess * Math.random());
+    const estOffset = Math.floor(Math.random()*180)-30;
+    const isOpen = Math.random()>0.35;
+    items.push({
+      id: String(1000+i),
+      fields: {
+        Title: incNo,
+        Name: ['Alice Thornton','Bob Patel','Carol Hughes','David Osei','Emma Walsh','Faisal Ahmed','Grace Kim','Henry Cooper'][i%8],
+        Site: sites[i%sites.length],
+        Division: ['SC','HC','PH'][i%3],
+        Cost_Code: sites[i%sites.length].substring(0,5).toUpperCase(),
+        Entity: entities[i%2],
+        Death: Math.random()<0.05?'Yes':'No',
+        Open_Claim: isOpen?'Yes':'No',
+        Claim_Code: codes[i%codes.length],
+        Severity: severities[i%severities.length],
+        Notification_Date: days(-Math.floor(Math.random()*300)),
+        Incident_Date: days(-Math.floor(Math.random()*400)-50),
+        Claim_Opened_Date: days(-Math.floor(Math.random()*200)),
+        Claim_Closed_Date: isOpen ? '' : days(-Math.floor(Math.random()*60)),
+        Indemnity_Type: ['Zurich','CNST'][i%2],
+        Panel_Solicitor: solicitors[i%solicitors.length],
+        Excess: excess,
+        Excess_Eroded: eroded,
+        Excess_Remaining: excess-eroded,
+        Reserves: reserves,
+        Accrual_Remaining: Math.round(reserves*0.3),
+        PPG_Capped_Reserve: Math.round(reserves*0.5),
+        Estimated_Date: days(estOffset),
+        Settlement_Paid: isOpen?0:Math.round(reserves*Math.random()*0.8),
+        Reference_Number: `${solicitors[i%solicitors.length]} ref ${100000+i}`,
+        Comments: `Case relates to ${['alleged delay in diagnosis','surgical complication','medication error','failure to refer','inadequate monitoring'][i%5]}.`,
+        Consultants: `Dr ${['Smith','Patel','Williams','Jones','Brown'][i%5]} — ${['Consultant','Senior Registrar','Specialist'][i%3]}`,
+        Learning: `Root Cause Analysis ${['underway','completed','pending review'][i%3]}.`,
+        Email: `claims+${i}@demo.org`,
+        Invoice_1: Math.round(Math.random()*3000),
+        Invoice_2: Math.round(Math.random()*2000),
+        Invoice_3: Math.round(Math.random()*1500),
+        Created: new Date(d).toISOString(),
+        Modified: new Date().toISOString(),
+        Author: {LookupValue: currentUser.name},
+        Editor: {LookupValue: currentUser.name},
+      }
+    });
+  }
+  return items;
+})();
+
+/* ──────────────── MSAL ──────────────── */
+function initMSAL() {
+  if (!CONFIG.clientId || !CONFIG.tenantId) return;
+  try {
+    msalInstance = new msal.PublicClientApplication({
+      auth: { clientId: CONFIG.clientId, authority: `https://login.microsoftonline.com/${CONFIG.tenantId}`, redirectUri: window.location.href.split('?')[0] },
+      cache: { cacheLocation: 'sessionStorage' }
+    });
+  } catch(e) { console.warn('MSAL init failed:', e); }
+}
+
+async function signInMSAL() {
+  if (!CONFIG.clientId || !CONFIG.tenantId) {
+    toast('No Client ID / Tenant ID configured. Please set them in Configuration first, or use Demo Mode.', 'error');
+    enterDemoMode(); return;
+  }
+  initMSAL();
+  try {
+    const result = await msalInstance.loginPopup({ scopes: ['Sites.ReadWrite.All','User.Read'] });
+    accessToken = result.accessToken;
+    const me = await graphFetch('https://graph.microsoft.com/v1.0/me');
+    currentUser = { name: me.displayName, initials: (me.displayName||'U').split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase() };
+    document.getElementById('user-name').textContent = currentUser.name;
+    document.getElementById('user-avatar').textContent = currentUser.initials;
+    document.getElementById('mode-badge').textContent = 'Connected';
+    document.getElementById('mode-badge').style.cssText = 'font-size:11px;padding:3px 10px;border-radius:10px;background:var(--teal-light);color:var(--teal)';
+    isDemoMode = false;
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    await resolveSiteAndList();
+    await loadIncidents();
+  } catch(e) {
+    toast('Sign-in failed: ' + (e.message||e), 'error');
+  }
+}
+
+async function refreshToken() {
+  if (!msalInstance) return null;
+  try {
+    const accounts = msalInstance.getAllAccounts();
+    if (!accounts.length) return null;
+    const result = await msalInstance.acquireTokenSilent({ scopes: ['Sites.ReadWrite.All'], account: accounts[0] });
+    accessToken = result.accessToken;
+    return accessToken;
+  } catch(e) { return null; }
+}
+
+async function graphFetch(url, method='GET', body=null) {
+  const token = accessToken || await refreshToken();
+  if (!token) throw new Error('Not authenticated');
+  const opts = { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  if (!r.ok) { const e = await r.json().catch(()=>{}); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
+  if (r.status === 204) return null;
+  return r.json();
+}
+
+async function resolveSiteAndList() {
+  if (!CONFIG.siteUrl) return;
+  try {
+    const url = new URL(CONFIG.siteUrl);
+    const path = url.pathname.replace(/\/$/, '');
+    const siteData = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${url.host}:${path}`);
+    siteId = siteData.id;
+    const listsData = await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists?$filter=displayName eq '${encodeURIComponent(CONFIG.listName)}'`);
+    if (listsData.value?.length) listId = listsData.value[0].id;
+    else throw new Error(`List "${CONFIG.listName}" not found`);
+    toast(`Connected to SharePoint list: ${CONFIG.listName}`, 'success');
+  } catch(e) { toast('Site/List resolution failed: ' + e.message, 'error'); }
+}
+
+/* ──────────────── DEMO MODE ──────────────── */
+function enterDemoMode() {
+  isDemoMode = true;
+  allIncidents = JSON.parse(JSON.stringify(DEMO_DATA));
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  toast('Running in demo mode — data is local only', 'info');
+  renderDashboard();
+  renderIncidentsTable();
+}
+
+function signOut() {
+  if (isDemoMode) { location.reload(); return; }
+  if (msalInstance) msalInstance.logoutPopup();
+  location.reload();
+}
+
+/* ──────────────── LOAD INCIDENTS ──────────────── */
+async function loadIncidents() {
+  if (isDemoMode) { filteredIncidents = [...allIncidents]; renderDashboard(); renderIncidentsTable(); return; }
+  if (!siteId || !listId) { toast('Not connected to SharePoint. Check Configuration.', 'error'); return; }
+  try {
+    let url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items?expand=fields&$top=999`;
+    const data = await graphFetch(url);
+    allIncidents = data.value || [];
+    filteredIncidents = [...allIncidents];
+    renderDashboard();
+    renderIncidentsTable();
+    toast(`Loaded ${allIncidents.length} incidents from SharePoint`, 'success');
+  } catch(e) { toast('Failed to load: ' + e.message, 'error'); }
+}
+
+/* ──────────────── GENERATE INCIDENT NO ──────────────── */
+function generateIncidentNo() {
+  const today = new Date().toISOString().split('T')[0];
+  const prefix = `INC-${today}-`;
+  const todayItems = allIncidents.filter(i => (i.fields.Title||'').startsWith(prefix));
+  const seq = todayItems.length + 1;
+  return prefix + String(seq).padStart(5, '0');
+}
+
+/* ──────────────── DASHBOARD ──────────────── */
+function renderDashboard() {
+  const f = allIncidents.map(i=>i.fields);
+  const open = f.filter(x=>x.Open_Claim==='Yes').length;
+  const total = f.length;
+  const totalReserves = f.reduce((s,x)=>s+(parseFloat(x.Reserves)||0),0);
+  const overdue = f.filter(x=>x.Estimated_Date && x.Estimated_Date < new Date().toISOString().split('T')[0] && x.Open_Claim==='Yes').length;
+
+  document.getElementById('stat-grid').innerHTML = `
+    <div class="stat-card blue"><div class="label">Total Incidents</div><div class="value">${total}</div><div class="sub">All time</div></div>
+    <div class="stat-card teal"><div class="label">Open Claims</div><div class="value">${open}</div><div class="sub">${total-open} closed</div></div>
+    <div class="stat-card amber"><div class="label">Total Reserves</div><div class="value">£${(totalReserves/1000).toFixed(0)}k</div><div class="sub">Across all open claims</div></div>
+    <div class="stat-card red"><div class="label">Overdue / Due Soon</div><div class="value">${overdue}</div><div class="sub">Past estimated date</div></div>
+  `;
+
+  // Severity chart
+  const sevGroups = {};
+  f.forEach(x=>{ const s=x.Severity||'Unknown'; sevGroups[s]=(sevGroups[s]||0)+1; });
+  renderChart('chart-severity','doughnut',
+    { labels: Object.keys(sevGroups), datasets: [{ data: Object.values(sevGroups), backgroundColor: ['#185FA5','#378ADD','#1D9E75','#EF9F27','#E24B4A','#9F77DD','#888780'], borderWidth: 0 }] },
+    { plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 12 } } } }, cutout: '60%' }
+  );
+
+  // Status chart
+  renderChart('chart-status','bar',
+    { labels: ['Open','Closed'], datasets: [{ data: [open, total-open], backgroundColor: ['#1D9E75','#888780'], borderRadius: 6, borderWidth: 0 }] },
+    { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f0f0f0' } }, x: { grid: { display: false } } } }
+  );
+
+  // Financial chart — top 8 by reserves
+  const top8 = [...f].sort((a,b)=>(b.Reserves||0)-(a.Reserves||0)).slice(0,8);
+  renderChart('chart-financial','bar',
+    { labels: top8.map(x=>(x.Title||'').substring(0,18)),
+      datasets: [
+        { label: 'Reserves', data: top8.map(x=>x.Reserves||0), backgroundColor: '#378ADD', borderRadius: 4, borderWidth: 0 },
+        { label: 'Settlement Paid', data: top8.map(x=>x.Settlement_Paid||0), backgroundColor: '#1D9E75', borderRadius: 4, borderWidth: 0 },
+      ]
+    },
+    { plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } } }, scales: { y: { beginAtZero: true, grid: { color: '#f0f0f0' }, ticks: { callback: v=>'£'+Math.round(v/1000)+'k' } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } } }
+  );
+
+  // Due table
+  const today = new Date().toISOString().split('T')[0];
+  const dueSoon = f.filter(x=>x.Estimated_Date && x.Open_Claim==='Yes').sort((a,b)=>a.Estimated_Date.localeCompare(b.Estimated_Date)).slice(0,8);
+  document.getElementById('due-table-body').innerHTML = dueSoon.length ? `
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>Incident No</th><th>Name</th><th>Site</th><th>Estimated Date</th><th>Status</th></tr></thead>
+      <tbody>${dueSoon.map(x=>{
+        const past = x.Estimated_Date < today;
+        return `<tr><td><span class="inc-no">${x.Title||''}</span></td><td>${x.Name||''}</td><td>${x.Site||''}</td>
+          <td style="color:${past?'var(--red)':'var(--amber)'}"><strong>${fmtDate(x.Estimated_Date)}</strong>${past?' ⚠️':''}</td>
+          <td><span class="badge badge-open">Open</span></td></tr>`;
+      }).join('')}</tbody>
+    </table></div>` : '<div class="empty-state"><p>No overdue or upcoming items</p></div>';
+}
+
+function renderChart(id, type, data, options) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  if (charts[id]) { charts[id].destroy(); }
+  charts[id] = new Chart(canvas, { type, data, options: { responsive: true, maintainAspectRatio: false, ...options } });
+}
+
+/* ──────────────── INCIDENTS TABLE ──────────────── */
+function filterIncidents() {
+  const q = (document.getElementById('search-input')?.value||'').toLowerCase();
+  const status = document.getElementById('filter-status')?.value||'';
+  filteredIncidents = allIncidents.filter(i => {
+    const f = i.fields;
+    const matchQ = !q || [f.Title,f.Name,f.Site,f.Division,f.Claim_Code,f.Reference_Number].some(v=>(v||'').toLowerCase().includes(q));
+    const matchS = !status || (status==='open'?f.Open_Claim==='Yes':f.Open_Claim!=='Yes');
+    return matchQ && matchS;
+  });
+  currentPage = 1;
+  renderIncidentsTable();
+}
+
+function renderIncidentsTable() {
+  const total = filteredIncidents.length;
+  const start = (currentPage-1)*PAGE_SIZE;
+  const page = filteredIncidents.slice(start, start+PAGE_SIZE);
+  const tbody = document.getElementById('incidents-tbody');
+  const today = new Date().toISOString().split('T')[0];
+
+  tbody.innerHTML = page.length ? page.map(item => {
+    const f = item.fields;
+    const isOpen = f.Open_Claim === 'Yes';
+    const isOverdue = isOpen && f.Estimated_Date && f.Estimated_Date < today;
+    const sev = f.Severity||'';
+    const sevLevel = sev.startsWith('6')||sev.startsWith('7')?'high':sev.startsWith('4')||sev.startsWith('5')?'med':'low';
+    return `<tr>
+      <td><span class="inc-no">${f.Title||'—'}</span></td>
+      <td>${f.Name||'—'}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.Site||'—'}</td>
+      <td><span style="font-size:11px;background:var(--bg3);padding:2px 6px;border-radius:4px;color:var(--text2)">${f.Division||'—'}</span></td>
+      <td>${fmtDate(f.Incident_Date)}</td>
+      <td><span class="badge badge-${sevLevel}">${sev||'—'}</span></td>
+      <td><span class="badge ${isOpen?'badge-open':'badge-closed'}">${isOpen?'Open':'Closed'}</span></td>
+      <td style="font-family:monospace;font-size:12px">£${fmt(f.Reserves)}</td>
+      <td style="${isOverdue?'color:var(--red);font-weight:500':''}">${fmtDate(f.Estimated_Date)}${isOverdue?' ⚠':''}</td>
+      <td><div class="actions-col">
+        <button class="icon-btn" onclick="openEditIncident('${item.id}')" title="Edit">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="icon-btn red" onclick="deleteIncident('${item.id}')" title="Delete">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      </div></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="10"><div class="empty-state">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    <p>No incidents found</p><small>Try adjusting your search or filters</small>
+  </div></td></tr>`;
+
+  // Pagination
+  const pages = Math.ceil(total / PAGE_SIZE);
+  const pg = document.getElementById('pagination');
+  if (pages <= 1) { pg.innerHTML=''; return; }
+  let html = `<span class="page-info">Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total}</span>`;
+  html += `<button class="page-btn" ${currentPage===1?'disabled':''} onclick="goPage(${currentPage-1})">‹</button>`;
+  for (let p=1;p<=pages;p++) {
+    if (pages>7 && p>2 && p<pages-1 && Math.abs(p-currentPage)>1) { if (p===3||p===pages-2) html+='<span style="color:var(--text3);padding:0 4px">…</span>'; continue; }
+    html += `<button class="page-btn ${p===currentPage?'current':''}" onclick="goPage(${p})">${p}</button>`;
+  }
+  html += `<button class="page-btn" ${currentPage===pages?'disabled':''} onclick="goPage(${currentPage+1})">›</button>`;
+  pg.innerHTML = html;
+}
+
+function goPage(p) { currentPage = p; renderIncidentsTable(); }
+
+/* ──────────────── MODAL ──────────────── */
+function openNewIncident() {
+  editingItemId = null;
+  document.getElementById('modal-title').textContent = 'New Incident';
+  clearForm();
+  document.getElementById('f-incidentNo').value = generateIncidentNo();
+  buildInvoiceFields();
+  document.getElementById('incident-modal').classList.remove('hidden');
+  switchTab('tab-basic', document.querySelector('.tab'));
+}
+
+function openEditIncident(id) {
+  editingItemId = id;
+  const item = allIncidents.find(i=>i.id===id);
+  if (!item) return;
+  const f = item.fields;
+  document.getElementById('modal-title').textContent = `Edit — ${f.Title}`;
+  clearForm();
+  const setVal = (el, v) => { const e = document.getElementById(el); if(e) e.value = v||''; };
+  setVal('f-incidentNo', f.Title);
+  setVal('f-recordNo', f.Record_Number);
+  setVal('f-name', f.Name);
+  setVal('f-email', f.Email);
+  setVal('f-site', f.Site);
+  setVal('f-division', f.Division);
+  setVal('f-costCode', f.Cost_Code);
+  setVal('f-entity', f.Entity);
+  setVal('f-claimCode', f.Claim_Code);
+  setVal('f-severity', f.Severity);
+  setVal('f-indemnityType', f.Indemnity_Type);
+  setVal('f-solicitor', f.Panel_Solicitor);
+  setVal('f-death', f.Death||'No');
+  setVal('f-openClaim', f.Open_Claim||'Yes');
+  setVal('f-notifDate', f.Notification_Date);
+  setVal('f-incidentDate', f.Incident_Date);
+  setVal('f-claimOpenDate', f.Claim_Opened_Date);
+  setVal('f-claimCloseDate', f.Claim_Closed_Date);
+  setVal('f-reopenDate', f.Re_Opened_Date);
+  setVal('f-estimatedDate', f.Estimated_Date);
+  setVal('f-refNumber', f.Reference_Number);
+  setVal('f-reserves', f.Reserves);
+  setVal('f-accrual', f.Accrual_Remaining);
+  setVal('f-ppgReserve', f.PPG_Capped_Reserve);
+  setVal('f-settlement', f.Settlement_Paid);
+  setVal('f-excess', f.Excess);
+  setVal('f-excessEroded', f.Excess_Eroded);
+  setVal('f-excessRemaining', f.Excess_Remaining);
+  setVal('f-comments', f.Comments);
+  setVal('f-consultants', f.Consultants);
+  setVal('f-learning', f.Learning);
+  buildInvoiceFields();
+  for (let i=1;i<=18;i++) {
+    const el = document.getElementById(`f-inv${i}`);
+    if (el) el.value = f[`Invoice_${i}`]||'';
+  }
+  updateInvoiceTotal();
+  // Audit
+  const auditList = document.getElementById('audit-list');
+  auditList.innerHTML = `
+    <li class="audit-item"><div class="audit-dot"></div><div>
+      <div class="audit-text">Record created by ${f.Author?.LookupValue||'System'}</div>
+      <div class="audit-time">${fmtDateTime(f.Created)}</div>
+    </div></li>
+    <li class="audit-item"><div class="audit-dot" style="background:var(--teal-mid)"></div><div>
+      <div class="audit-text">Last modified by ${f.Editor?.LookupValue||currentUser.name}</div>
+      <div class="audit-time">${fmtDateTime(f.Modified)}</div>
+    </div></li>
+  `;
+  document.getElementById('incident-modal').classList.remove('hidden');
+  switchTab('tab-basic', document.querySelector('.tab'));
+}
+
+function clearForm() {
+  const ids = ['f-incidentNo','f-recordNo','f-name','f-email','f-site','f-costCode','f-entity','f-claimCode','f-refNumber','f-notifDate','f-incidentDate','f-claimOpenDate','f-claimCloseDate','f-reopenDate','f-estimatedDate','f-reserves','f-accrual','f-ppgReserve','f-settlement','f-excess','f-excessEroded','f-excessRemaining','f-comments','f-consultants','f-learning'];
+  ids.forEach(id=>{ const e=document.getElementById(id); if(e)e.value=''; });
+}
+
+function closeModal() {
+  document.getElementById('incident-modal').classList.add('hidden');
+  editingItemId = null;
+}
+
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (btn) btn.classList.add('active');
+  else {
+    const tabs = document.querySelectorAll('.tab');
+    const panels = document.querySelectorAll('.tab-panel');
+    panels.forEach((p,i)=>{ if(p.id===id) tabs[i]?.classList.add('active'); });
+  }
+}
+
+function buildInvoiceFields() {
+  const grid = document.getElementById('invoice-fields');
+  grid.innerHTML = '';
+  for (let i=1;i<=18;i++) {
+    grid.innerHTML += `<div class="field"><label>Invoice ${i}</label><input type="number" id="f-inv${i}" placeholder="0.00" step="0.01" oninput="updateInvoiceTotal()"></div>`;
+  }
+}
+
+function updateInvoiceTotal() {
+  let total = 0;
+  for (let i=1;i<=18;i++) {
+    total += parseFloat(document.getElementById(`f-inv${i}`)?.value)||0;
+  }
+  document.getElementById('invoice-total').textContent = '£' + total.toFixed(2);
+}
+
+// Auto-calc excess remaining
+document.addEventListener('input', e => {
+  if (['f-excess','f-excessEroded'].includes(e.target.id)) {
+    const ex = parseFloat(document.getElementById('f-excess')?.value)||0;
+    const er = parseFloat(document.getElementById('f-excessEroded')?.value)||0;
+    const el = document.getElementById('f-excessRemaining');
+    if (el) el.value = (ex-er).toFixed(2);
+  }
+});
+
+/* ──────────────── SUBMIT ──────────────── */
+async function submitIncident() {
+  const name = document.getElementById('f-name')?.value?.trim();
+  const email = document.getElementById('f-email')?.value?.trim();
+  const site = document.getElementById('f-site')?.value?.trim();
+  if (!name || !email || !site) { toast('Please fill in Name, Email and Site', 'error'); return; }
+
+  const fields = {
+    Title: document.getElementById('f-incidentNo').value,
+    Name: name,
+    Email: email,
+    Site: site,
+    Division: document.getElementById('f-division').value,
+    Cost_Code: document.getElementById('f-costCode').value,
+    Entity: document.getElementById('f-entity').value,
+    Death: document.getElementById('f-death').value,
+    Open_Claim: document.getElementById('f-openClaim').value,
+    Claim_Code: document.getElementById('f-claimCode').value,
+    Severity: document.getElementById('f-severity').value,
+    Indemnity_Type: document.getElementById('f-indemnityType').value,
+    Panel_Solicitor: document.getElementById('f-solicitor').value,
+    Notification_Date: document.getElementById('f-notifDate').value,
+    Incident_Date: document.getElementById('f-incidentDate').value,
+    Claim_Opened_Date: document.getElementById('f-claimOpenDate').value,
+    Claim_Closed_Date: document.getElementById('f-claimCloseDate').value,
+    Re_Opened_Date: document.getElementById('f-reopenDate').value,
+    Estimated_Date: document.getElementById('f-estimatedDate').value,
+    Reference_Number: document.getElementById('f-refNumber').value,
+    Record_Number: document.getElementById('f-recordNo').value,
+    Reserves: parseFloat(document.getElementById('f-reserves').value)||0,
+    Accrual_Remaining: parseFloat(document.getElementById('f-accrual').value)||0,
+    PPG_Capped_Reserve: parseFloat(document.getElementById('f-ppgReserve').value)||0,
+    Settlement_Paid: parseFloat(document.getElementById('f-settlement').value)||0,
+    Excess: parseFloat(document.getElementById('f-excess').value)||0,
+    Excess_Eroded: parseFloat(document.getElementById('f-excessEroded').value)||0,
+    Excess_Remaining: parseFloat(document.getElementById('f-excessRemaining').value)||0,
+    Comments: document.getElementById('f-comments').value,
+    Consultants: document.getElementById('f-consultants').value,
+    Learning: document.getElementById('f-learning').value,
+  };
+  for (let i=1;i<=18;i++) fields[`Invoice_${i}`] = parseFloat(document.getElementById(`f-inv${i}`)?.value)||0;
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Saving…';
+
+  try {
+    if (isDemoMode) {
+      await new Promise(r=>setTimeout(r,600));
+      if (editingItemId) {
+        const idx = allIncidents.findIndex(i=>i.id===editingItemId);
+        if (idx>=0) {
+          allIncidents[idx].fields = {...allIncidents[idx].fields, ...fields, Modified: new Date().toISOString(), Editor: {LookupValue: currentUser.name}};
+        }
+        toast(`Incident ${fields.Title} updated`, 'success');
+      } else {
+        const newItem = { id: String(Date.now()), fields: {...fields, Created: new Date().toISOString(), Modified: new Date().toISOString(), Author: {LookupValue:currentUser.name}, Editor: {LookupValue:currentUser.name}} };
+        allIncidents.unshift(newItem);
+        toast(`Incident ${fields.Title} created`, 'success');
+      }
+    } else {
+      if (!siteId || !listId) throw new Error('Not connected to SharePoint');
+      if (editingItemId) {
+        await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${editingItemId}/fields`, 'PATCH', fields);
+        toast(`Incident ${fields.Title} updated in SharePoint`, 'success');
+      } else {
+        await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, 'POST', { fields });
+        toast(`Incident ${fields.Title} saved to SharePoint`, 'success');
+      }
+      await loadIncidents();
+    }
+    filteredIncidents = [...allIncidents];
+    filterIncidents();
+    renderDashboard();
+    closeModal();
+  } catch(e) {
+    toast('Save failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Save Incident';
+  }
+}
+
+/* ──────────────── DELETE ──────────────── */
+async function deleteIncident(id) {
+  const item = allIncidents.find(i=>i.id===id);
+  if (!item) return;
+  if (!confirm(`Delete incident ${item.fields.Title}? This cannot be undone.`)) return;
+  try {
+    if (isDemoMode) {
+      await new Promise(r=>setTimeout(r,300));
+      allIncidents = allIncidents.filter(i=>i.id!==id);
+    } else {
+      await graphFetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items/${id}`, 'DELETE');
+      await loadIncidents();
+    }
+    filteredIncidents = allIncidents.filter(i=>i.id!==id);
+    filterIncidents();
+    renderDashboard();
+    toast('Incident deleted', 'success');
+  } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
+}
+
+/* ──────────────── EXPORT ──────────────── */
+function exportToCSV() {
+  const headers = ['Incident No','Name','Site','Division','Incident Date','Severity','Open Claim','Reserves','Estimated Date','Email','Reference Number'];
+  const rows = filteredIncidents.map(i=>{
+    const f = i.fields;
+    return [f.Title,f.Name,f.Site,f.Division,f.Incident_Date,f.Severity,f.Open_Claim,f.Reserves,f.Estimated_Date,f.Email,f.Reference_Number]
+      .map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(',');
+  });
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Claims_Tracker_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  toast(`Exported ${filteredIncidents.length} incidents to CSV`, 'success');
+}
+
+/* ──────────────── CONFIG ──────────────── */
+function saveConfig() {
+  CONFIG.clientId = document.getElementById('cfg-clientId').value.trim();
+  CONFIG.tenantId = document.getElementById('cfg-tenantId').value.trim();
+  CONFIG.siteUrl = document.getElementById('cfg-siteUrl').value.trim();
+  CONFIG.listName = document.getElementById('cfg-listName').value.trim();
+  CONFIG.notifyEmail = document.getElementById('cfg-notifyEmail').value.trim();
+  Object.keys(CONFIG).forEach(k=>localStorage.setItem('cfg_'+k, CONFIG[k]));
+  toast('Configuration saved', 'success');
+}
+
+async function testConnection() {
+  saveConfig();
+  const result = document.getElementById('conn-result');
+  result.innerHTML = '<span class="spinner"></span> Testing…';
+  if (isDemoMode) { result.innerHTML = '<span style="color:var(--amber)">⚠ Running in demo mode. Sign in with Microsoft to test a real connection.</span>'; return; }
+  try {
+    await resolveSiteAndList();
+    result.innerHTML = `<span style="color:var(--teal)">✓ Connected to SharePoint list: <strong>${CONFIG.listName}</strong></span>`;
+  } catch(e) {
+    result.innerHTML = `<span style="color:var(--red)">✗ ${e.message}</span>`;
+  }
+}
+
+/* ──────────────── NAV ──────────────── */
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById(`screen-${name}`)?.classList.add('active');
+  const navMap = {dashboard:0,incidents:1,config:3};
+  document.querySelectorAll('.nav-item')[navMap[name]||0]?.classList.add('active');
+  const titles = {dashboard:'Dashboard',incidents:'All Incidents',config:'Configuration'};
+  document.getElementById('topbar-title').textContent = titles[name]||name;
+  if (name==='incidents') { filteredIncidents=[...allIncidents]; renderIncidentsTable(); }
+  if (name==='dashboard') renderDashboard();
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+}
+
+/* ──────────────── HELPERS ──────────────── */
+function fmtDate(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return v;
+  return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+}
+function fmtDateTime(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return v;
+  return d.toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+function fmt(n) { return parseFloat(n||0).toLocaleString('en-GB',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+
+function toast(msg, type='info') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(()=>t.remove(), 4000);
+}
+
+/* ──────────────── INIT ──────────────── */
+window.addEventListener('DOMContentLoaded', () => {
+  // Populate config form from saved values
+  Object.keys(CONFIG).forEach(k=>{
+    const el = document.getElementById('cfg-'+k.replace(/([A-Z])/g,'-$1').toLowerCase().replace('cfg-','cfg-'));
+    if (el) el.value = CONFIG[k];
+  });
+  document.getElementById('cfg-clientId').value = CONFIG.clientId;
+  document.getElementById('cfg-tenantId').value = CONFIG.tenantId;
+  document.getElementById('cfg-siteUrl').value = CONFIG.siteUrl;
+  document.getElementById('cfg-listName').value = CONFIG.listName;
+  document.getElementById('cfg-notifyEmail').value = CONFIG.notifyEmail;
+});
+</script>
+</body>
+</html>
